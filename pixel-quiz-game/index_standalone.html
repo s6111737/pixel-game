@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel Quiz Game (Standalone)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #1a1a1a;
+      --text-primary: #39ff14;
+      --text-secondary: #ff00ff;
+      --border-color: #39ff14;
+      --error-color: #ff0000;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      margin: 0;
+      font-family: 'Press Start 2P', cursive;
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+    body::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      z-index: 2;
+      background-size: 100% 2px, 3px 100%;
+      pointer-events: none;
+    }
+    #root { width: 100%; max-width: 800px; padding: 1rem; z-index: 1; position: relative; }
+    h1, h2, h3 { text-align: center; margin-bottom: 2rem; text-transform: uppercase; letter-spacing: 2px; line-height: 1.5; font-size: clamp(1rem, 4vw, 2rem); word-break: break-word; }
+    .pixel-box {
+      border: 4px solid var(--border-color);
+      padding: 15px; background-color: #000;
+      box-shadow: inset -4px -4px 0px 0px rgba(0, 0, 0, 0.5), 4px 4px 0px 0px rgba(0, 0, 0, 0.5);
+      width: 100%; max-width: 95vw; margin: 0 auto;
+    }
+    input {
+      font-family: 'Press Start 2P', cursive; background-color: #000; color: var(--text-primary);
+      border: 4px solid var(--border-color); padding: 15px; font-size: 1rem; width: 100%; margin-bottom: 20px; outline: none; box-sizing: border-box;
+    }
+    input:focus { border-color: var(--text-secondary); }
+    button {
+      font-family: 'Press Start 2P', cursive; background-color: var(--border-color); color: #000;
+      border: 4px solid transparent; padding: 12px 15px; font-size: clamp(0.7rem, 2.5vw, 1rem); cursor: pointer; width: 100%;
+      transition: transform 0.1s; box-shadow: inset -4px -4px 0px 0px rgba(0,0,0,0.3); word-break: break-word; line-height: 1.4; box-sizing: border-box;
+    }
+    button:hover { background-color: #000; color: var(--border-color); border-color: var(--border-color); }
+    button:active { transform: translateY(4px); box-shadow: none; }
+    .blink { animation: blinker 1s linear infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
+    .boss-image {
+      width: 150px; height: 150px; margin: 0 auto 20px; display: block;
+      image-rendering: pixelated; background-color: #222; border: 4px solid var(--text-secondary); max-width: 100%;
+    }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
+    .status-bar { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 0.8rem; color: var(--text-secondary); gap: 10px; }
+    .loading { text-align: center; font-size: clamp(1rem, 4vw, 1.5rem); color: var(--text-secondary); padding: 20px; }
+    @media (max-width: 600px) { 
+      .options-grid { grid-template-columns: 1fr; gap: 10px; } 
+      .boss-image { width: 100px; height: 100px; }
+      .status-bar { flex-direction: column; align-items: center; font-size: 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // --- API Mock (Since we don't have GAS URL deployed yet) ---
+    const SCRIPT_URL = ''; 
+    const PASS_THRESHOLD = 3;
+
+    const fetchQuestions = async () => {
+      // 模擬從後端抓題目的延遲
+      await new Promise(r => setTimeout(r, 1000));
+      return [
+        { id: 1, question: "世界上最高的山是？", A: "玉山", B: "富士山", C: "聖母峰", D: "阿爾卑斯山" },
+        { id: 2, question: "光速大約是每秒幾萬公里？", A: "10萬", B: "20萬", C: "30萬", D: "40萬" },
+        { id: 3, question: "水分子由什麼組成？", A: "H2O", B: "CO2", C: "O2", D: "NaCl" },
+        { id: 4, question: "哪顆行星被稱為紅色星球？", A: "金星", B: "火星", C: "木星", D: "土星" },
+        { id: 5, question: "一天有幾小時？", A: "12", B: "20", C: "24", D: "48" }
+      ];
+    };
+
+    const submitAnswers = async (playerId, answers) => {
+      // 模擬從後端結算的延遲
+      await new Promise(r => setTimeout(r, 1500));
+      // 簡單模擬算分 (假設都對)
+      const correct = Math.floor(Math.random() * 6); // 隨機給 0~5 題答對
+      return {
+        score: correct * 20,
+        correct: correct,
+        total: 5,
+        highScore: correct * 20,
+        firstClearScore: correct >= PASS_THRESHOLD ? correct * 20 : null,
+        attempts: 1
+      };
+    };
+
+    // --- Components ---
+    const StartScreen = ({ onStart }) => {
+      const [idInput, setIdInput] = useState('');
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (idInput.trim()) onStart(idInput.trim());
+      };
+      return (
+        <div className="pixel-box" style={{ maxWidth: '400px', margin: '0 auto' }}>
+          <h1 className="blink" style={{ color: 'var(--text-secondary)' }}>PIXEL QUIZ</h1>
+          <p style={{ textAlign: 'center', marginBottom: '30px', fontSize: '0.8rem', lineHeight: '1.5' }}>
+            INSERT COIN...<br/>JUST KIDDING.<br/>ENTER YOUR ID!
+          </p>
+          <form onSubmit={handleSubmit}>
+            <input type="text" placeholder="PLAYER ID" value={idInput} onChange={(e) => setIdInput(e.target.value)} maxLength={15} required />
+            <button type="submit">START GAME</button>
+          </form>
+        </div>
+      );
+    };
+
+    const GameScreen = ({ playerId, questions, onFinish }) => {
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [answers, setAnswers] = useState([]);
+      
+      useEffect(() => {
+        questions.forEach((q, index) => {
+          const img = new Image();
+          img.src = `https://api.dicebear.com/9.x/pixel-art/svg?seed=boss_${q.id || index}`;
+        });
+      }, [questions]);
+
+      const handleAnswer = (selectedOption) => {
+        const currentQ = questions[currentIndex];
+        const newAnswers = [...answers, { id: currentQ.id, answer: selectedOption }];
+        setAnswers(newAnswers);
+
+        if (currentIndex + 1 < questions.length) {
+          setCurrentIndex(currentIndex + 1);
+        } else {
+          onFinish(newAnswers);
+        }
+      };
+
+      if (!questions || questions.length === 0) return <div className="loading">ERROR: NO QUESTIONS</div>;
+
+      const q = questions[currentIndex];
+      const bossSeed = `boss_${q.id || currentIndex}`;
+      const bossImageUrl = `https://api.dicebear.com/9.x/pixel-art/svg?seed=${bossSeed}`;
+
+      return (
+        <div className="pixel-box">
+          <div className="status-bar">
+            <span>PLAYER: {playerId}</span>
+            <span>STAGE: {currentIndex + 1} / {questions.length}</span>
+          </div>
+          <img src={bossImageUrl} alt="Boss" className="boss-image" />
+          <h2 style={{ fontSize: '1rem', minHeight: '60px' }}>{q.question}</h2>
+          <div className="options-grid">
+            <button onClick={() => handleAnswer('A')}>A. {q.A}</button>
+            <button onClick={() => handleAnswer('B')}>B. {q.B}</button>
+            <button onClick={() => handleAnswer('C')}>C. {q.C}</button>
+            <button onClick={() => handleAnswer('D')}>D. {q.D}</button>
+          </div>
+        </div>
+      );
+    };
+
+    const ResultScreen = ({ result, onRestart }) => {
+      const isPass = result && result.correct >= PASS_THRESHOLD;
+      return (
+        <div className="pixel-box" style={{ maxWidth: '500px', margin: '0 auto', textAlign: 'center' }}>
+          <h1 className={isPass ? "blink" : ""} style={{ color: isPass ? 'var(--text-primary)' : 'var(--error-color)' }}>
+            {isPass ? "STAGE CLEAR!" : "GAME OVER"}
+          </h1>
+          <div style={{ margin: '30px 0', lineHeight: '2' }}>
+            <p>SCORE: {result?.score || 0}</p>
+            <p>CORRECT: {result?.correct || 0} / {result?.total || 0}</p>
+            {result?.firstClearScore && <p>FIRST CLEAR SCORE: {result.firstClearScore}</p>}
+            {result?.clearAttempts && <p>CLEAR ATTEMPTS: {result.clearAttempts}</p>}
+            {result?.highScore && <p>HIGH SCORE: {result.highScore}</p>}
+            {result?.attempts && <p>ATTEMPTS: {result.attempts}</p>}
+          </div>
+          <button onClick={onRestart}>PLAY AGAIN</button>
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [gameState, setGameState] = useState('start');
+      const [playerId, setPlayerId] = useState('');
+      const [questions, setQuestions] = useState([]);
+      const [userAnswers, setUserAnswers] = useState([]);
+      const [result, setResult] = useState(null);
+
+      const handleStart = async (id) => {
+        setPlayerId(id);
+        setGameState('loading');
+        const fetchedQuestions = await fetchQuestions();
+        setQuestions(fetchedQuestions);
+        setUserAnswers([]);
+        setGameState('playing');
+      };
+
+      const handleFinish = async (answers) => {
+        setGameState('submitting');
+        setUserAnswers(answers);
+        const finalResult = await submitAnswers(playerId, answers);
+        setResult(finalResult);
+        setGameState('result');
+      };
+
+      const handleRestart = () => {
+        setGameState('start');
+        setPlayerId('');
+        setQuestions([]);
+        setUserAnswers([]);
+        setResult(null);
+      };
+
+      return (
+        <div className="app-container">
+          {gameState === 'start' && <StartScreen onStart={handleStart} />}
+          {gameState === 'loading' && <div className="loading blink">LOADING STAGE...</div>}
+          {gameState === 'playing' && <GameScreen playerId={playerId} questions={questions} onFinish={handleFinish} />}
+          {gameState === 'submitting' && <div className="loading blink">CALCULATING SCORE...</div>}
+          {gameState === 'result' && <ResultScreen result={result} onRestart={handleRestart} />}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
